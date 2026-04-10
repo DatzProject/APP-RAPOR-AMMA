@@ -49,7 +49,7 @@ interface KehadiranData {
 }
 
 const endpoint =
-  "https://script.google.com/macros/s/AKfycbwTqCARXhhWmnhWIRjhzcRyBiDO8vwrm40aBHCLVC9xqAFcxQ1kslamtXK-W8yq4MQi/exec";
+  "https://script.google.com/macros/s/AKfycbxI4g4YuyfVPARxV0YUf7Fj6kv20PyO8gaVOAMD7uDjcE1-d9bQFBJVcO2vP4hkO03_rw/exec";
 
 const throttle = (func: Function, delay: number) => {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -3733,17 +3733,43 @@ const DataSekolah = () => {
             </button>
           </div>
           {ttdKepsek && (
-            <img
-              src={ttdKepsek}
-              alt="TTD Kepsek"
-              style={{
-                marginTop: "12px",
-                maxWidth: "200px",
-                height: "80px",
-                border: "1px solid #ddd",
-                borderRadius: "4px",
-              }}
-            />
+            <div style={{ marginTop: "12px" }}>
+              <img
+                src={ttdKepsek}
+                alt="TTD Kepsek"
+                style={{
+                  maxWidth: "200px",
+                  height: "80px",
+                  border: "1px solid #ddd",
+                  borderRadius: "4px",
+                  display: "block",
+                  marginBottom: "8px",
+                }}
+              />
+              <button
+                onClick={() => {
+                  const confirm = window.confirm(
+                    "⚠️ Hapus tanda tangan Kepala Sekolah?\n\nTanda tangan akan dihapus permanen setelah disimpan."
+                  );
+                  if (confirm) {
+                    setTtdKepsek("");
+                    kepsekSigCanvas.current?.clear();
+                  }
+                }}
+                disabled={isSaving}
+                style={{
+                  padding: "6px 14px",
+                  backgroundColor: "#ef4444",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                  fontSize: "13px",
+                }}
+              >
+                🗑️ Hapus TTD Tersimpan
+              </button>
+            </div>
           )}
         </div>
 
@@ -3875,17 +3901,43 @@ const DataSekolah = () => {
             </button>
           </div>
           {ttdGuru && (
-            <img
-              src={ttdGuru}
-              alt="TTD Guru"
-              style={{
-                marginTop: "12px",
-                maxWidth: "200px",
-                height: "80px",
-                border: "1px solid #ddd",
-                borderRadius: "4px",
-              }}
-            />
+            <div style={{ marginTop: "12px" }}>
+              <img
+                src={ttdGuru}
+                alt="TTD Guru"
+                style={{
+                  maxWidth: "200px",
+                  height: "80px",
+                  border: "1px solid #ddd",
+                  borderRadius: "4px",
+                  display: "block",
+                  marginBottom: "8px",
+                }}
+              />
+              <button
+                onClick={() => {
+                  const confirm = window.confirm(
+                    "⚠️ Hapus tanda tangan Guru?\n\nTanda tangan akan dihapus permanen setelah disimpan."
+                  );
+                  if (confirm) {
+                    setTtdGuru("");
+                    guruSigCanvas.current?.clear();
+                  }
+                }}
+                disabled={isSaving}
+                style={{
+                  padding: "6px 14px",
+                  backgroundColor: "#ef4444",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                  fontSize: "13px",
+                }}
+              >
+                🗑️ Hapus TTD Tersimpan
+              </button>
+            </div>
           )}
         </div>
 
@@ -8892,6 +8944,22 @@ const RekapNilai = () => {
     if (filteredData.length === 0) return;
     setIsDownloadingAll(true);
 
+    let currentSchoolData = localSchoolData;
+    if (!currentSchoolData) {
+      try {
+        const schoolRes = await fetch(`${endpoint}?action=schoolData`);
+        if (schoolRes.ok) {
+          const schoolJson = await schoolRes.json();
+          if (schoolJson.success && schoolJson.data?.length > 0) {
+            currentSchoolData = schoolJson.data[0];
+            setLocalSchoolData(schoolJson.data[0]);
+          }
+        }
+      } catch (e) {
+        console.warn("Gagal fetch schoolData:", e);
+      }
+    }
+
     try {
       const doc = new jsPDF({
         orientation: "landscape",
@@ -9406,6 +9474,77 @@ const RekapNilai = () => {
         doc.setTextColor(100, 100, 100);
         doc.text(`Total: ${rows.length} siswa`, margin, finalY);
         doc.setTextColor(0, 0, 0);
+
+        // ⬇️ TAMBAHKAN TANDA TANGAN DI SINI
+        const ttdStartY = finalY + 10;
+        const kepsekX = margin;
+        const guruX = pageW - margin - 50;
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9);
+
+        // Tanggal
+        const tanggalRapor = localSchoolData?.tanggalRapor || "";
+        if (tanggalRapor) {
+          doc.text(`Bungeng, ${tanggalRapor}`, guruX, ttdStartY);
+        }
+
+        // Label jabatan
+        doc.text("Kepala Sekolah,", kepsekX, ttdStartY + 5);
+        doc.text("Wali Kelas,", guruX, ttdStartY + 5);
+
+        // TTD Kepsek
+        if (currentSchoolData?.ttdKepsek) {
+          try {
+            const ttdKepsekData = currentSchoolData.ttdKepsek.startsWith(
+              "data:"
+            )
+              ? currentSchoolData.ttdKepsek
+              : "data:image/png;base64," + currentSchoolData.ttdKepsek;
+            doc.addImage(ttdKepsekData, "PNG", kepsekX, ttdStartY + 7, 30, 15);
+          } catch (e) {
+            console.warn("Gagal load TTD Kepsek:", e);
+          }
+        }
+
+        // TTD Guru
+        if (currentSchoolData?.ttdGuru) {
+          try {
+            const ttdGuruData = currentSchoolData.ttdGuru.startsWith("data:")
+              ? currentSchoolData.ttdGuru
+              : "data:image/png;base64," + currentSchoolData.ttdGuru;
+            doc.addImage(ttdGuruData, "PNG", guruX, ttdStartY + 7, 30, 15);
+          } catch (e) {
+            console.warn("Gagal load TTD Guru:", e);
+          }
+        }
+
+        // Nama dan NIP Kepsek
+        const namaKepsek = localSchoolData?.namaKepsek || "_______________";
+        const nipKepsek = localSchoolData?.nipKepsek || "_______________";
+        doc.setFont("helvetica", "bold");
+        doc.text(namaKepsek, kepsekX, ttdStartY + 25);
+        doc.setLineWidth(0.3);
+        const kepsekTextW = doc.getTextWidth(namaKepsek);
+        doc.line(
+          kepsekX,
+          ttdStartY + 26,
+          kepsekX + kepsekTextW,
+          ttdStartY + 26
+        );
+        doc.setFont("helvetica", "normal");
+        doc.text(`NIP. ${nipKepsek}`, kepsekX, ttdStartY + 30);
+
+        // Nama dan NIP Guru
+        const namaGuru = localSchoolData?.namaGuru || "_______________";
+        const nipGuru = localSchoolData?.nipGuru || "_______________";
+        doc.setFont("helvetica", "bold");
+        doc.text(namaGuru, guruX, ttdStartY + 25);
+        doc.setLineWidth(0.3);
+        const guruTextW = doc.getTextWidth(namaGuru);
+        doc.line(guruX, ttdStartY + 26, guruX + guruTextW, ttdStartY + 26);
+        doc.setFont("helvetica", "normal");
+        doc.text(`NIP. ${nipGuru}`, guruX, ttdStartY + 30);
       });
 
       // Nomor halaman
