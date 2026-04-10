@@ -49,7 +49,7 @@ interface KehadiranData {
 }
 
 const endpoint =
-  "https://script.google.com/macros/s/AKfycbxI4g4YuyfVPARxV0YUf7Fj6kv20PyO8gaVOAMD7uDjcE1-d9bQFBJVcO2vP4hkO03_rw/exec";
+  "https://script.google.com/macros/s/AKfycbwTqCARXhhWmnhWIRjhzcRyBiDO8vwrm40aBHCLVC9xqAFcxQ1kslamtXK-W8yq4MQi/exec";
 
 const throttle = (func: Function, delay: number) => {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -1034,6 +1034,14 @@ const InputNilai = () => {
     const kelas = actualData[0]?.Data3 || "N/A";
     const semester = actualData[0]?.Data2 || "N/A";
 
+    visibleHeaders.forEach((header, idx) => {
+      const dispH = data[0][header] || "";
+      console.log(
+        `Header: "${header}" | Display: "${dispH}" | charCodes:`,
+        [...dispH].map((c) => c.charCodeAt(0)) // expand array ini
+      );
+    });
+
     // ─── JUDUL ───
     doc.setFont("helvetica", "bold");
     doc.setFontSize(13);
@@ -1051,7 +1059,12 @@ const InputNilai = () => {
     // ─── KATEGORIKAN KOLOM ───
     // Cek apakah display header adalah kode TP (format angka.angka seperti "6.1")
     const isTPHeader = (headerDisplay: string): boolean => {
-      return /^\d+\.\d+$/.test(headerDisplay.trim());
+      // Hapus Zero Width Space (\u200B) dan karakter tersembunyi lainnya
+      const cleaned = headerDisplay.replace(
+        /[\u200B\u200C\u200D\uFEFF\s]/g,
+        ""
+      );
+      return /^\d+\.\d+$/.test(cleaned);
     };
 
     // Cek apakah kolom adalah Sumatif Lingkup Materi (Data22)
@@ -1110,16 +1123,22 @@ const InputNilai = () => {
 
     // Hitung lebar minimum setiap kolom TP/SLM berdasarkan lebar teks headernya
     const getMinTPColW = (headerText: string): number => {
+      // ✅ Bersihkan \u200B sebelum hitung lebar
+      const cleanText = headerText
+        .replace(/[\u200B\u200C\u200D\uFEFF]/g, "")
+        .trim();
       doc.setFontSize(6.5);
-      const textW = doc.getTextWidth(headerText);
-      return textW + 4; // +4 untuk padding kiri kanan
+      const textW = doc.getTextWidth(cleanText);
+      return textW + 4;
     };
 
     // Hitung total lebar yang dibutuhkan kolom TP/SLM
     let totalTPSLMNeeded = 0;
     let otherDynamicCount = 0;
     dynamicHeaders.forEach((header) => {
-      const dispH = data[0][header] || "";
+      const dispH = (data[0][header] || "")
+        .replace(/[\u200B\u200C\u200D\uFEFF]/g, "")
+        .trim();
       const cat = colCategories[visibleHeaders.indexOf(header)];
       if (cat === "TP" || cat === "SLM") {
         totalTPSLMNeeded += getMinTPColW(dispH);
@@ -1306,7 +1325,10 @@ const InputNilai = () => {
       if (cat === "TP" || cat === "SLM") {
         const x = colPositions[idx + 1];
         const w = colWidths[idx + 1];
-        const dispH = data[0][header] || header;
+        // ✅ Bersihkan \u200B dari display header
+        const dispH = (data[0][header] || header)
+          .replace(/[\u200B\u200C\u200D\uFEFF]/g, "")
+          .trim();
 
         // Warna bergantian untuk TP
         const colors: [number, number, number][] = [
@@ -1944,7 +1966,6 @@ const InputNilai = () => {
     "Data1",
     "Data2",
     "Data3",
-    "Data23",
     "Data26",
     "Data27",
     "Data28",
@@ -4697,26 +4718,25 @@ const InputTP = () => {
 
     const actualData = data.slice(1);
 
-    // Filter data berdasarkan MAPEL saja
     const filteredData = actualData.filter((row: any) => row.Data1 === mapel);
 
-    // Jika belum ada data untuk mapel ini, mulai dari [bab].1
     if (filteredData.length === 0) {
       return `${bab}.1`;
     }
 
-    // Ambil semua TP dari mapel yang sama yang dimulai dengan bab yang dipilih
+    // ✅ UBAH: Bersihkan \u200B saat membaca data lama
     const tpList = filteredData
-      .map((row: any) => row.Data2)
+      .map((row: any) => {
+        const tp = row.Data2 || "";
+        return tp.replace(/[\u200B\u200C\u200D\uFEFF]/g, "").trim();
+      })
       .filter((tp: string) => {
         if (!tp || typeof tp !== "string") return false;
-        const tpBab = tp.split(".")[0];
-        return tpBab === bab;
+        return tp.split(".")[0] === bab;
       })
       .sort((a: string, b: string) => {
-        const [aMain, aSub] = a.split(".").map(Number);
-        const [bMain, bSub] = b.split(".").map(Number);
-        if (aMain !== bMain) return aMain - bMain;
+        const [, aSub] = a.split(".").map(Number);
+        const [, bSub] = b.split(".").map(Number);
         return aSub - bSub;
       });
 
@@ -4847,10 +4867,21 @@ const InputTP = () => {
 
     setIsSaving(true);
 
+    const cleanTP = {
+      mapel: newTP.mapel.replace(/[\u200B\u200C\u200D\uFEFF]/g, "").trim(),
+      tp: newTP.tp.replace(/[\u200B\u200C\u200D\uFEFF]/g, "").trim(),
+      rincian: newTP.rincian.replace(/[\u200B\u200C\u200D\uFEFF]/g, "").trim(),
+      bab: newTP.bab.replace(/[\u200B\u200C\u200D\uFEFF]/g, "").trim(),
+      semester: newTP.semester
+        .replace(/[\u200B\u200C\u200D\uFEFF]/g, "")
+        .trim(),
+      kelas: newTP.kelas.replace(/[\u200B\u200C\u200D\uFEFF]/g, "").trim(),
+    };
+
     try {
       const requestBody = {
         action: "add_tp",
-        data: newTP,
+        data: cleanTP,
       };
 
       const response = await fetch(endpoint, {
@@ -4868,12 +4899,12 @@ const InputTP = () => {
       alert("✅ Data TP baru berhasil ditambahkan!");
 
       const newRow = {
-        Data1: newTP.mapel,
-        Data2: newTP.tp,
-        Data3: newTP.rincian,
-        Data4: newTP.bab,
-        Data5: newTP.semester,
-        Data6: newTP.kelas,
+        Data1: cleanTP.mapel, // ⬅️ ganti newTP menjadi cleanTP
+        Data2: cleanTP.tp,
+        Data3: cleanTP.rincian,
+        Data4: cleanTP.bab,
+        Data5: cleanTP.semester,
+        Data6: cleanTP.kelas,
       };
       const updatedData = [...data, newRow];
       setData(updatedData);
@@ -4890,7 +4921,7 @@ const InputTP = () => {
       setIsAddingNew(false);
       setIsSaving(false);
 
-      await refreshMapelSheet(newTP.mapel);
+      await refreshMapelSheet(cleanTP.mapel);
 
       setTimeout(() => {
         refreshRekapData(true);
@@ -4939,12 +4970,24 @@ const InputTP = () => {
 
     const headers = ["Data1", "Data2", "Data3", "Data4", "Data5", "Data6"];
     const values = [
-      editTP.mapel,
-      editTP.tp,
-      editTP.rincian,
-      editTP.bab,
-      editTP.semester,
-      editTP.kelas,
+      String(editTP.mapel)
+        .replace(/[\u200B\u200C\u200D\uFEFF]/g, "")
+        .trim(),
+      String(editTP.tp)
+        .replace(/[\u200B\u200C\u200D\uFEFF]/g, "")
+        .trim(),
+      String(editTP.rincian)
+        .replace(/[\u200B\u200C\u200D\uFEFF]/g, "")
+        .trim(),
+      String(editTP.bab)
+        .replace(/[\u200B\u200C\u200D\uFEFF]/g, "")
+        .trim(),
+      String(editTP.semester)
+        .replace(/[\u200B\u200C\u200D\uFEFF]/g, "")
+        .trim(),
+      String(editTP.kelas)
+        .replace(/[\u200B\u200C\u200D\uFEFF]/g, "")
+        .trim(),
     ];
 
     const originalRowIndex = rowMapping[editingIndex];
@@ -4974,12 +5017,12 @@ const InputTP = () => {
       // Update local state
       const updatedData = [...data];
       updatedData[editingIndex + 1] = {
-        Data1: editTP.mapel,
-        Data2: editTP.tp,
-        Data3: editTP.rincian,
-        Data4: editTP.bab,
-        Data5: editTP.semester,
-        Data6: editTP.kelas,
+        Data1: values[0], // ⬅️ gunakan values[] yang sudah clean
+        Data2: values[1],
+        Data3: values[2],
+        Data4: values[3],
+        Data5: values[4],
+        Data6: values[5],
       };
       setData(updatedData);
       updateLocalData("tp", updatedData);
@@ -10638,7 +10681,7 @@ const RekapNilai = () => {
               // Kolom nilai dimulai dari Data6 (index 5 di headers)
               const excludeKeys = ["Data17"];
               const nilaiHeaders = headers
-                .slice(5)
+                .slice(1)
                 .filter((h) => !excludeKeys.includes(h));
 
               // Hitung per kolom
