@@ -4727,26 +4727,62 @@ const InputTP = () => {
           setRowMapping([]);
         }
 
-        // Extract unique mapel untuk dropdown
-        const actualData = jsonData.slice(1).filter((row: any) => {
+        // Extract unique semester dari DataTP (tetap dari DataTP)
+        const actualDataTP = jsonData.slice(1).filter((row: any) => {
           return Object.values(row).some(
             (val) => val && typeof val === "string" && val.trim() !== ""
           );
         });
 
-        const mapelSet = new Set<string>();
-        actualData.forEach((row: any) => {
-          if (row.Data1) {
-            mapelSet.add(row.Data1);
-          }
-        });
-        setAvailableMapel(Array.from(mapelSet).sort());
-
         const semesterSet = new Set<string>();
-        actualData.forEach((row: any) => {
+        actualDataTP.forEach((row: any) => {
           if (row.Data5) semesterSet.add(String(row.Data5));
         });
         setAvailableSemester(Array.from(semesterSet).sort());
+
+        // ⬇️ UBAH: Ambil daftar mapel dari sheet DataMapel
+        try {
+          const mapelResponse = await fetch(`${endpoint}?sheet=DataMapel`);
+          if (!mapelResponse.ok) {
+            throw new Error("Failed to fetch DataMapel");
+          }
+
+          const mapelJson = await mapelResponse.json();
+
+          // DataMapel: baris pertama = header, baris berikutnya = data
+          const mapelRows = mapelJson.slice(1).filter((row: any) => {
+            return (
+              row.Data1 &&
+              typeof row.Data1 === "string" &&
+              row.Data1.trim() !== ""
+            );
+          });
+
+          const mapelList = mapelRows
+            .map((row: any) =>
+              row.Data1.replace(/[\u200B\u200C\u200D\uFEFF]/g, "").trim()
+            )
+            .filter((m: string) => m !== "");
+
+          // Hapus duplikat dan sort
+          const uniqueMapel = Array.from(new Set<string>(mapelList)).sort();
+          setAvailableMapel(uniqueMapel);
+
+          console.log(
+            `📚 Loaded ${uniqueMapel.length} mapel from DataMapel:`,
+            uniqueMapel
+          );
+        } catch (mapelErr) {
+          console.error("Error fetching DataMapel:", mapelErr);
+          // Fallback: ambil dari DataTP jika DataMapel gagal
+          const mapelSet = new Set<string>();
+          actualDataTP.forEach((row: any) => {
+            if (row.Data1) mapelSet.add(row.Data1);
+          });
+          setAvailableMapel(Array.from(mapelSet).sort());
+          console.warn("⚠️ Fallback: menggunakan mapel dari DataTP");
+        }
+        // ⬆️ SAMPAI SINI
 
         setLoading(false);
         console.log("✅ InputTP data refreshed successfully");
@@ -4803,22 +4839,59 @@ const InputTP = () => {
     return nextTP;
   };
 
-  const handleMapelChange = (selectedMapel: string) => {
-    setNewTP((prev) => {
-      const actualData = data.slice(1);
-      const mapelData = actualData.find(
-        (row: any) => row.Data1 === selectedMapel
-      );
+  const handleMapelChange = async (selectedMapel: string) => {
+    // Coba ambil semester & kelas dari DataTP dulu
+    const actualDataTP = data.slice(1);
+    const mapelDataTP = actualDataTP.find(
+      (row: any) => row.Data1 === selectedMapel
+    );
 
-      return {
+    if (mapelDataTP) {
+      // Sudah ada di DataTP, langsung pakai
+      setNewTP((prev) => ({
         ...prev,
         mapel: selectedMapel,
         tp: "",
         bab: "",
-        semester: mapelData?.Data5 || "",
-        kelas: mapelData?.Data6 || "",
-      };
-    });
+        semester: String(mapelDataTP.Data5 || ""),
+        kelas: String(mapelDataTP.Data6 || ""),
+      }));
+    } else {
+      // Belum ada di DataTP, fetch dari DataMapel
+      try {
+        const mapelResponse = await fetch(`${endpoint}?sheet=DataMapel`);
+        if (mapelResponse.ok) {
+          const mapelJson = await mapelResponse.json();
+          const mapelRow = mapelJson
+            .slice(1)
+            .find(
+              (row: any) =>
+                (row.Data1 || "")
+                  .replace(/[\u200B\u200C\u200D\uFEFF]/g, "")
+                  .trim() === selectedMapel
+            );
+
+          setNewTP((prev) => ({
+            ...prev,
+            mapel: selectedMapel,
+            tp: "",
+            bab: "",
+            semester: mapelRow ? String(mapelRow.Data2 || "") : "", // Data2 = semester di DataMapel
+            kelas: mapelRow ? String(mapelRow.Data3 || "") : "", // Data3 = kelas di DataMapel
+          }));
+        }
+      } catch (err) {
+        console.error("Error fetching DataMapel untuk semester/kelas:", err);
+        setNewTP((prev) => ({
+          ...prev,
+          mapel: selectedMapel,
+          tp: "",
+          bab: "",
+          semester: "",
+          kelas: "",
+        }));
+      }
+    }
   };
 
   const handleBabChange = (selectedBab: string) => {
